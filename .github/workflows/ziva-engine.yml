@@ -1,0 +1,68 @@
+# Builds the Ziva-patched CEF engine (SafeInvoke barriers — survives Unity domain-reload
+# reattach) as ready-to-host UPM package tarballs. Mirrors upstream main.yml's
+# build-engine-cef job; kept separate so ziva/* pushes never run upstream's Unity-project
+# jobs (they need Unity license secrets we don't carry).
+#
+# macOS legs are deliberately absent for now: the macOS webview transport is still an open
+# decision (frame transport vs UWB), and mac runners bill at 10x. Add macos-14 entries from
+# upstream's matrix when that decision lands.
+name: Ziva Engine Build
+
+on:
+  push:
+    branches:
+      - "ziva/**"
+  workflow_dispatch:
+
+jobs:
+  build-engine-cef:
+    strategy:
+      fail-fast: false
+      matrix:
+        # ubuntu-22.04 matches upstream: the oldest supported glibc baseline the package
+        # promises. If GitHub retires the runner this fails loudly — bump it consciously.
+        include:
+          - os: ubuntu-22.04
+            build: linux64
+            package: Linux-x64
+          - os: windows-2022
+            build: windows64
+            package: Win-x64
+
+    runs-on: ${{ matrix.os }}
+    name: Ziva-Engine-CEF-${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+          # Nerdbank.GitVersioning fails on shallow clones
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v5
+        name: Setup .NET
+        with:
+          dotnet-version: "10.x"
+
+      - name: Download CEF ${{ matrix.build }}
+        run: python download_cef_${{ matrix.build }}.py
+        working-directory: src/DevScripts/
+
+      - name: Build CEF Engine ${{ matrix.build }}
+        run: python build_cef_${{ matrix.build }}.py
+        working-directory: src/DevScripts/
+
+      - name: Create Artifacts Staging Directory
+        shell: pwsh
+        run: mkdir ${{ github.workspace }}/UWBStaging/
+
+      - name: Pack CEF Engine ${{ matrix.package }} Package
+        shell: pwsh
+        run: npm pack --pack-destination ${{ github.workspace }}/UWBStaging/
+        working-directory: src/Packages/UnityWebBrowser.Engine.Cef.${{ matrix.package }}
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: Ziva-Engine-CEF-${{ matrix.package }}
+          path: ${{ github.workspace }}/UWBStaging/*.tgz
+          if-no-files-found: error
