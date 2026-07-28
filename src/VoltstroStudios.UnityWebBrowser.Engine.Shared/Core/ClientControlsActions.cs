@@ -20,58 +20,72 @@ internal class ClientControlsActions : IClientControls, IDisposable
     private Client? client;
     private IClientControls? clientActions;
 
+    //Ziva patch: VoltRpc's Client.IsConnected does not detect a dead peer, so the guards below
+    //pass on a severed connection (e.g. the Unity editor reloaded its app domain) and the
+    //proxy call throws. These events fire from inside native CEF callbacks, where an unhandled
+    //exception FailFasts the entire engine (observed SIGABRT via OnVirtualKeyboardRequested ->
+    //InputFocusChange). Events are fire-and-forget notifications: when the channel is gone,
+    //dropping them is correct — killing the browser is not.
+    private bool channelDead;
+
+    private void SafeInvoke(Action action)
+    {
+        if (channelDead || client is not { IsConnected: true })
+            return;
+        try
+        {
+            action();
+        }
+        catch (Exception)
+        {
+            channelDead = true;
+            Console.WriteLine("[UWB] client event channel lost; dropping further engine->client events");
+        }
+    }
+
     public void UrlChange(string url)
     {
-        if (client is {IsConnected: true})
-            clientActions?.UrlChange(url);
+        SafeInvoke(() => clientActions?.UrlChange(url));
     }
 
     public void LoadStart(string url)
     {
-        if (client is {IsConnected: true})
-            clientActions?.LoadStart(url);
+        SafeInvoke(() => clientActions?.LoadStart(url));
     }
 
     public void LoadFinish(string url)
     {
-        if (client is {IsConnected: true})
-            clientActions?.LoadFinish(url);
+        SafeInvoke(() => clientActions?.LoadFinish(url));
     }
 
     public void TitleChange(string title)
     {
-        if (client is {IsConnected: true})
-            clientActions?.TitleChange(title);
+        SafeInvoke(() => clientActions?.TitleChange(title));
     }
 
     public void ProgressChange(double progress)
     {
-        if (client is {IsConnected: true})
-            clientActions?.ProgressChange(progress);
+        SafeInvoke(() => clientActions?.ProgressChange(progress));
     }
 
     public void Fullscreen(bool fullScreen)
     {
-        if (client is {IsConnected: true})
-            clientActions?.Fullscreen(fullScreen);
+        SafeInvoke(() => clientActions?.Fullscreen(fullScreen));
     }
 
     public void InputFocusChange(bool focused)
     {
-        if (client is {IsConnected: true})
-            clientActions?.InputFocusChange(focused);
+        SafeInvoke(() => clientActions?.InputFocusChange(focused));
     }
 
     public void Ready()
     {
-        if (client is {IsConnected: true})
-            clientActions?.Ready();
+        SafeInvoke(() => clientActions?.Ready());
     }
 
     public void ExecuteJsMethod(ExecuteJsMethod executeJsMethod)
     {
-        if (client is {IsConnected: true})
-            clientActions?.ExecuteJsMethod(executeJsMethod);
+        SafeInvoke(() => clientActions?.ExecuteJsMethod(executeJsMethod));
     }
 
     public void Dispose()
@@ -84,6 +98,7 @@ internal class ClientControlsActions : IClientControls, IDisposable
     {
         client = ipcClient ?? throw new NullReferenceException();
         clientActions = new ClientControls(client);
+        channelDead = false; //Ziva patch: a fresh client is a fresh channel
     }
 
     ~ClientControlsActions()

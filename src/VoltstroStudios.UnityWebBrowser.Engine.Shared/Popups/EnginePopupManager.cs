@@ -38,8 +38,7 @@ public class EnginePopupManager : IPopupClientControls
     public void OnPopup(EnginePopupInfo enginePopupInfo)
     {
         popups.Add(enginePopupInfo);
-        if (client is { IsConnected: true })
-            engineControls?.OnPopup(enginePopupInfo.PopupGuid);
+        SafeInvoke(() => engineControls?.OnPopup(enginePopupInfo.PopupGuid));
     }
 
     /// <summary>
@@ -49,8 +48,26 @@ public class EnginePopupManager : IPopupClientControls
     public void OnPopupDestroy(EnginePopupInfo enginePopupInfo)
     {
         popups.Remove(enginePopupInfo);
-        if (client is { IsConnected: true })
-            engineControls?.OnPopupDestroy(enginePopupInfo.PopupGuid);
+        SafeInvoke(() => engineControls?.OnPopupDestroy(enginePopupInfo.PopupGuid));
+    }
+
+    //Ziva patch: same barrier as ClientControlsActions — IsConnected cannot detect a dead
+    //peer, and a throw out of a CEF callback FailFasts the engine. See that class for details.
+    private bool channelDead;
+
+    private void SafeInvoke(Action action)
+    {
+        if (channelDead || client is not { IsConnected: true })
+            return;
+        try
+        {
+            action();
+        }
+        catch (Exception)
+        {
+            channelDead = true;
+            Console.WriteLine("[UWB] popup event channel lost; dropping further popup events");
+        }
     }
     
     /// <inheritdoc />
@@ -76,5 +93,6 @@ public class EnginePopupManager : IPopupClientControls
     {
         client = ipcClient;
         engineControls = new PopupEngineControls(client);
+        channelDead = false; //Ziva patch: a fresh client is a fresh channel
     }
 }
