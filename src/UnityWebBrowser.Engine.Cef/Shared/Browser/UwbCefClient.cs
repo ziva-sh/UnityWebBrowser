@@ -167,7 +167,13 @@ internal class UwbCefClient : CefClient, IDisposable
                 WindowsKeyCode = (int)key,
                 Character = keyChar,
                 UnmodifiedCharacter = keyChar,
-                EventType = CefKeyEventType.KeyDown,
+                // RawKeyDown, not KeyDown. Blink resolves editing commands (backspace, delete,
+                // arrows, home/end) on kRawKeyDown; kKeyDown is the type CEF documents as "a key
+                // was pressed ... use KEYEVENT_CHAR for character input", and off-screen browsers
+                // that send it get no editing behaviour at all. Text entry was unaffected because
+                // it rides the separate Char branch, which is exactly why only the non-printable
+                // keys appeared broken.
+                EventType = CefKeyEventType.RawKeyDown,
                 Modifiers = modifiers | UwbCefClientUtils.GetKeyDirection(key)
             };
 
