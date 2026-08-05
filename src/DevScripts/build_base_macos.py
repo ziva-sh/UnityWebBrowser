@@ -40,7 +40,12 @@ def build_cef_engine_macos(arch) -> None:
     os.makedirs(cef_engine_app_frameworks_path, exist_ok=True)
 
     shutil.copy(os.path.join(cef_engine_build_path, 'UnityWebBrowser.Engine.Cef'), cef_engine_app_macos_path)
-    shutil.copy(os.path.join(cef_engine_build_path, 'info.plist'), cef_engine_app_contents_path)
+    # ZIVA PATCH: 'Info.plist', not 'info.plist'. macOS resolves the lowercase name only
+    # because the boot volume happens to be case-insensitive, but codesign matches the
+    # bundle's Info.plist by exact name — given the lowercase one it fails to recognise the
+    # directory as a bundle and reports "code object is not signed at all". Apple Silicon
+    # refuses to exec unsigned Mach-O, so an unsignable bundle is an unshippable engine.
+    shutil.copy(os.path.join(cef_engine_build_path, 'info.plist'), os.path.join(cef_engine_app_contents_path, 'Info.plist'))
     shutil.copy(os.path.join(cef_engine_build_path, 'icon.icns'), cef_engine_app_resources_path)
     shutil.copytree(cef_framework_path, os.path.join(cef_engine_app_frameworks_path, 'Chromium Embedded Framework.framework'))
 
@@ -65,7 +70,7 @@ def build_cef_engine_macos(arch) -> None:
         cef_engine_subprocess_macos_path = os.path.join(cef_engine_subprocess_app_path, 'MacOS')
 
         os.makedirs(cef_engine_subprocess_macos_path, exist_ok=True)
-        shutil.copy(os.path.join(cef_engine_build_path, plist_file), os.path.join(cef_engine_subprocess_app_path, 'info.plist'))
+        shutil.copy(os.path.join(cef_engine_build_path, plist_file), os.path.join(cef_engine_subprocess_app_path, 'Info.plist'))
         shutil.copy(os.path.join(cef_engine_build_path, 'UnityWebBrowser.Engine.Cef.SubProcess'), os.path.join(cef_engine_subprocess_macos_path, 'UnityWebBrowser.Engine.Cef.SubProcess{0}'.format(name)))
 
     # Copy final app bundle to MacOS package
