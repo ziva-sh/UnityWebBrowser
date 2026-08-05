@@ -67,7 +67,13 @@ internal static class UwbCefClientUtils
         WindowsKey.Menu => CefEventFlags.AltDown,
         WindowsKey.LMenu => CefEventFlags.AltDown,
         WindowsKey.RMenu => CefEventFlags.AltDown,
-        // No support for command
+
+        // ZIVA PATCH: Command is the macOS shortcut modifier, and dropping it here meant CEF was
+        // never told the key was held — so Cmd+C/Cmd+V/Cmd+A did nothing in the Unity dock no
+        // matter how the key event itself was delivered. Windows and Linux were unaffected
+        // because they use Ctrl, which is mapped above. Clients send Command as LWin/RWin.
+        WindowsKey.LWin => CefEventFlags.CommandDown,
+        WindowsKey.RWin => CefEventFlags.CommandDown,
 
         _ => CefEventFlags.None
     };
