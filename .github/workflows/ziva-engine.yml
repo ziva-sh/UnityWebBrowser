@@ -3,9 +3,9 @@
 # build-engine-cef job; kept separate so ziva/* pushes never run upstream's Unity-project
 # jobs (they need Unity license secrets we don't carry).
 #
-# macOS legs are deliberately absent for now: the macOS webview transport is still an open
-# decision (frame transport vs UWB), and mac runners bill at 10x. Add macos-14 entries from
-# upstream's matrix when that decision lands.
+# CEF has no universal macOS build, so the two mac legs are genuinely separate engines —
+# Ziva's mac zips ship one each, alongside a universal sidecar. Both cross-compile from the
+# same macos-14 (arm64) runner, matching upstream's matrix.
 name: Ziva Engine Build
 
 on:
@@ -28,6 +28,14 @@ jobs:
           - os: windows-2022
             build: windows64
             package: Win-x64
+          # macos-14 is Apple Silicon; the x64 leg is a `dotnet publish -r osx-x64`
+          # cross-build off the same runner, exactly as upstream does it.
+          - os: macos-14
+            build: macosarm64
+            package: MacOS-arm64
+          - os: macos-14
+            build: macosx64
+            package: MacOS-x64
 
     runs-on: ${{ matrix.os }}
     name: Ziva-Engine-CEF-${{ matrix.package }}
@@ -43,6 +51,13 @@ jobs:
         with:
           dotnet-version: "10.x"
 
+      # The DevScripts are invoked as `python`, which only the ubuntu/windows images
+      # provide unprompted. Pin it for every leg rather than branching per-OS.
+      - uses: actions/setup-python@v6
+        name: Setup Python
+        with:
+          python-version: "3.12"
+
       - name: Download CEF ${{ matrix.build }}
         run: python download_cef_${{ matrix.build }}.py
         working-directory: src/DevScripts/
@@ -50,6 +65,24 @@ jobs:
       - name: Build CEF Engine ${{ matrix.build }}
         run: python build_cef_${{ matrix.build }}.py
         working-directory: src/DevScripts/
+
+      # build_base_macos.py assembles the .app but signs nothing, and Apple Silicon
+      # refuses to exec an unsigned Mach-O — the engine would be SIGKILLed on every
+      # M-series Mac. Ad-hoc is enough (same treatment the zivacode sidecar gets in
+      # apps/plugin-server/scripts/build.ts) and needs no signing identity in CI.
+      # Nested code must be signed before its container, so this runs inside-out.
+      - name: Ad-hoc sign CEF Engine ${{ matrix.package }}
+        if: startsWith(matrix.os, 'macos')
+        working-directory: src/Packages/UnityWebBrowser.Engine.Cef.${{ matrix.package }}/Engine~
+        run: |
+          set -euo pipefail
+          app="UnityWebBrowser.Engine.Cef.app"
+          for helper in "$app"/Contents/Frameworks/*.app; do
+            codesign --force --sign - "$helper"
+          done
+          codesign --force --sign - "$app/Contents/Frameworks/Chromium Embedded Framework.framework"
+          codesign --force --sign - "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
 
       - name: Create Artifacts Staging Directory
         shell: pwsh
