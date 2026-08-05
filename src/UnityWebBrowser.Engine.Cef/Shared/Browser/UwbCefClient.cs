@@ -161,26 +161,32 @@ internal class UwbCefClient : CefClient, IDisposable
         //Keys down
         foreach (WindowsKey key in keyboardEvent.KeysDown)
         {
+            char keyChar = UwbCefClientUtils.MacCharacterForKey(key);
             CefKeyEvent keyEvent = new()
             {
                 WindowsKeyCode = (int)key,
+                Character = keyChar,
+                UnmodifiedCharacter = keyChar,
                 EventType = CefKeyEventType.KeyDown,
                 Modifiers = modifiers | UwbCefClientUtils.GetKeyDirection(key)
             };
-            
+
             browserHost.SendKeyEvent(keyEvent);
         }
 
         //Keys up
         foreach (WindowsKey key in keyboardEvent.KeysUp)
         {
+            char keyChar = UwbCefClientUtils.MacCharacterForKey(key);
             CefKeyEvent keyEvent = new()
             {
                 WindowsKeyCode = (int)key,
+                Character = keyChar,
+                UnmodifiedCharacter = keyChar,
                 EventType = CefKeyEventType.KeyUp,
                 Modifiers = modifiers | UwbCefClientUtils.GetKeyDirection(key)
             };
-            
+
             browserHost.SendKeyEvent(keyEvent);
         }
 
